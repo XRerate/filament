@@ -481,6 +481,14 @@ Handle<HwTimerQuery> OpenGLDriver::createTimerQueryS() noexcept {
     return initHandle<GLTimerQuery>();
 }
 
+Handle<HwDescriptorSetLayout> OpenGLDriver::createDescriptorSetLayoutS() noexcept {
+    return initHandle<GLDescriptorSetLayout>();
+}
+
+Handle<HwDescriptorSet> OpenGLDriver::createDescriptorSetS() noexcept {
+    return initHandle<GLDescriptorSet>();
+}
+
 void OpenGLDriver::createVertexBufferInfoR(
         Handle<HwVertexBufferInfo> vbih,
         uint8_t bufferCount,
@@ -1486,6 +1494,16 @@ void OpenGLDriver::createTimerQueryR(Handle<HwTimerQuery> tqh, int) {
     mContext.createTimerQuery(tq);
 }
 
+void OpenGLDriver::createDescriptorSetLayoutR(Handle<HwDescriptorSetLayout> dslh,
+        DescriptorSetLayout&& info) {
+    DEBUG_MARKER()
+}
+
+void OpenGLDriver::createDescriptorSetR(Handle<HwDescriptorSet> dsh,
+        Handle<HwDescriptorSetLayout> dslh) {
+    DEBUG_MARKER()
+}
+
 // ------------------------------------------------------------------------------------------------
 // Destroying driver objects
 // ------------------------------------------------------------------------------------------------
@@ -1694,6 +1712,14 @@ void OpenGLDriver::destroyTimerQuery(Handle<HwTimerQuery> tqh) {
         mContext.destroyTimerQuery(tq);
         destruct(tqh, tq);
     }
+}
+
+void OpenGLDriver::destroyDescriptorSetLayout(Handle<HwDescriptorSetLayout> dslh) {
+    DEBUG_MARKER()
+}
+
+void OpenGLDriver::destroyDescriptorSet(Handle<HwDescriptorSet> dsh) {
+    DEBUG_MARKER()
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -3065,20 +3091,6 @@ void OpenGLDriver::bindBufferRange(BufferObjectBinding bindingType, uint32_t ind
     CHECK_GL_ERROR(utils::slog.e)
 }
 
-void OpenGLDriver::unbindBuffer(BufferObjectBinding bindingType, uint32_t index) {
-    DEBUG_MARKER()
-    auto& gl = mContext;
-
-    if (UTILS_UNLIKELY(bindingType == BufferObjectBinding::UNIFORM && gl.isES2())) {
-        gl.setEs2UniformBinding(index, 0, nullptr, 0);
-        return;
-    }
-
-    GLenum const target = GLUtils::getBufferBindingType(bindingType);
-    gl.bindBufferRange(target, GLuint(index), 0, 0, 0);
-    CHECK_GL_ERROR(utils::slog.e)
-}
-
 void OpenGLDriver::bindSamplers(uint32_t index, Handle<HwSamplerGroup> sbh) {
     DEBUG_MARKER()
     assert_invariant(index < Program::SAMPLER_BINDING_COUNT);
@@ -3450,6 +3462,20 @@ void OpenGLDriver::endFrame(UTILS_UNUSED uint32_t frameId) {
     //glFinish();
     mPlatform.endFrame(frameId);
     insertEventMarker("endFrame");
+}
+
+void OpenGLDriver::updateDescriptorSetBuffer(
+        backend::DescriptorSetHandle dsh,
+        backend::descriptor_binding_t binding,
+        backend::BufferObjectHandle boh,
+        uint32_t offset, uint32_t size) {
+}
+
+void OpenGLDriver::updateDescriptorSetTexture(
+        backend::DescriptorSetHandle dsh,
+        backend::descriptor_binding_t binding,
+        backend::TextureHandle th,
+        SamplerParams params) {
 }
 
 void OpenGLDriver::flush(int) {
@@ -3829,6 +3855,12 @@ void OpenGLDriver::bindRenderPrimitive(Handle<HwRenderPrimitive> rph) {
     updateVertexArrayObject(rp, glvb);
 
     mBoundRenderPrimitive = rp;
+}
+
+void OpenGLDriver::bindDescriptorSet(
+        backend::DescriptorSetHandle dsh,
+        backend::descriptor_set_t set,
+        utils::FixedCapacityVector<uint32_t>&& offsets) {
 }
 
 void OpenGLDriver::draw2(uint32_t indexOffset, uint32_t indexCount, uint32_t instanceCount) {
