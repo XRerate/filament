@@ -34,6 +34,37 @@ enum class PostProcessVariant : uint8_t {
     TRANSLUCENT
 };
 
+enum class DescriptorSetBindingPoints : uint8_t {
+    PER_VIEW        = 0,
+    PER_RENDERABLE  = 1,
+    PER_MATERIAL    = 2,
+};
+
+// binding point for the "per-view" descriptor set
+enum class PerViewBindingPoints : uint8_t  {
+    FRAME_UNIFORMS  =  0,   // uniforms updated per view
+    LIGHTS          =  1,   // lights data array
+    SHADOWS         =  2,   // punctual shadow data
+    RECORD_BUFFER   =  3,   // froxel record buffer
+    FROXEL_BUFFER   =  4,   // froxel buffer
+    SHADOW_MAP      =  5,   // user defined (1024x1024) DEPTH, array
+    IBL_DFG_LUT     =  6,   // user defined (128x128), RGB16F
+    IBL_SPECULAR    =  7,   // user defined, user defined, CUBEMAP
+    SSAO            =  8,   // variable, RGB8 {AO, [depth]}
+    SSR             =  9,   // variable, RGB_11_11_10, mipmapped
+    STRUCTURE       = 10,   // variable, DEPTH
+    FOG             = 11    // variable, user defined, CUBEMAP
+};
+
+enum class PerRenderableBindingPoints : uint8_t  {
+    OBJECT_UNIFORMS             =  0,   // uniforms updated per renderable
+    BONES_UNIFORMS              =  1,
+    MORPHING_UNIFORMS           =  2,
+    MORPH_TARGET_POSITIONS      =  3,
+    MORPH_TARGET_TANGENTS       =  4,
+    BONES_INDICES_AND_WEIGHTS   =  5,
+};
+
 // Binding points for uniform buffers
 enum class UniformBindingPoints : uint8_t {
     PER_VIEW                   = 0,    // uniforms updated per view
@@ -130,6 +161,13 @@ constexpr size_t CONFIG_MAX_MORPH_TARGET_COUNT = 256;
 constexpr uint8_t CONFIG_MAX_STEREOSCOPIC_EYES = 4;
 
 } // namespace filament
+
+template<>
+struct utils::EnableIntegerOperators<filament::DescriptorSetBindingPoints> : public std::true_type {};
+template<>
+struct utils::EnableIntegerOperators<filament::PerViewBindingPoints> : public std::true_type {};
+template<>
+struct utils::EnableIntegerOperators<filament::PerRenderableBindingPoints> : public std::true_type {};
 
 template<>
 struct utils::EnableIntegerOperators<filament::UniformBindingPoints> : public std::true_type {};

@@ -60,6 +60,11 @@ public:
         std::fill(std::begin(storage), std::end(storage), 0);
     }
 
+    template<typename U, typename = typename std::enable_if_t<N == 1, U>>
+    explicit bitset(U value) noexcept {
+        storage[0] = value;
+    }
+
     T getBitsAt(size_t n) const noexcept {
         assert_invariant(n<N);
         return storage[n];
