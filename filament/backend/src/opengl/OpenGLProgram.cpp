@@ -45,9 +45,9 @@ using namespace utils;
 using namespace backend;
 
 struct OpenGLProgram::LazyInitializationData {
+    Program::DescriptorSetInfo descriptorBindings;
     Program::UniformBlockInfo uniformBlockInfo;
-    std::array<Program::UniformInfo, Program::UNIFORM_BINDING_COUNT> bindingUniformInfo;
-    utils::FixedCapacityVector<Program::Descriptor> descriptorBindings;
+    Program::BindingUniformsInfo bindingUniformInfo;
 };
 
 
@@ -59,10 +59,9 @@ OpenGLProgram::OpenGLProgram(OpenGLDriver& gld, Program&& program) noexcept
     auto* const lazyInitializationData = new(std::nothrow) LazyInitializationData();
     if (UTILS_UNLIKELY(gld.getContext().isES2())) {
         lazyInitializationData->bindingUniformInfo = std::move(program.getBindingUniformInfo());
-    } else {
-        lazyInitializationData->uniformBlockInfo = std::move(program.getUniformBlockBindings());
-        lazyInitializationData->descriptorBindings = std::move(program.getDescriptorBindings());
+        lazyInitializationData->uniformBlockInfo = std::move(program.getUniformBlockInfo());
     }
+    lazyInitializationData->descriptorBindings = std::move(program.getDescriptorBindings());
 
     ShaderCompilerService& compiler = gld.getShaderCompilerService();
     mToken = compiler.createProgram(name, std::move(program));
@@ -120,39 +119,49 @@ void OpenGLProgram::initializeProgramState(OpenGLContext& context, GLuint progra
 
     SYSTRACE_CALL();
 
-#ifndef FILAMENT_SILENCE_NOT_SUPPORTED_BY_ES2
-    if (!context.isES2()) {
+    // from the pipeline layout we compute a mapping from {set, binding} to {binding}
+    // for both buffers and textures
 
-        // from the pipeline layout we compute a mapping from {set, binding} to {binding}
-        // for both buffers and textures
-
-        std::sort(lazyInitializationData.descriptorBindings.begin(),
-                lazyInitializationData.descriptorBindings.end(),
+    for (auto&& entry: lazyInitializationData.descriptorBindings) {
+        std::sort(entry.begin(), entry.end(),
                 [](Program::Descriptor const& lhs, Program::Descriptor const& rhs) {
-                    if (lhs.set == rhs.set) {
-                        return lhs.binding < rhs.binding;
-                    }
-                    return lhs.set < rhs.set;
+                    return lhs.binding < rhs.binding;
                 });
+    }
 
-        GLuint tmu = 0;
-        GLuint binding = 0;
+    GLuint tmu = 0;
+    GLuint binding = 0;
 
-        // needed for samplers
-        context.useProgram(program);
+    // needed for samplers
+    context.useProgram(program);
 
-        UTILS_NOUNROLL
-        for (Program::Descriptor const& entry: lazyInitializationData.descriptorBindings) {
+    UTILS_NOUNROLL
+    for (backend::descriptor_set_t set = 0; set < MAX_DESCRIPTOR_SET_COUNT; set++) {
+        for (Program::Descriptor const& entry: lazyInitializationData.descriptorBindings[set]) {
             switch (entry.type) {
                 case DescriptorType::UNIFORM_BUFFER:
                 case DescriptorType::SHADER_STORAGE_BUFFER: {
                     if (!entry.name.empty()) {
-                        GLuint const index = glGetUniformBlockIndex(program, entry.name.c_str());
-                        if (index != GL_INVALID_INDEX) {
-                            // this can fail if the program doesn't use this descriptor
-                            mBindingMap.insert(entry.set, entry.binding, { binding, entry.type });
-                            glUniformBlockBinding(program, index, binding);
-                            ++binding;
+#ifndef FILAMENT_SILENCE_NOT_SUPPORTED_BY_ES2
+                        if (UTILS_LIKELY(!context.isES2())) {
+                            GLuint const index = glGetUniformBlockIndex(program,
+                                    entry.name.c_str());
+                            if (index != GL_INVALID_INDEX) {
+                                // this can fail if the program doesn't use this descriptor
+                                glUniformBlockBinding(program, index, binding);
+                                mBindingMap.insert(set, entry.binding,
+                                        { binding, entry.type });
+                                ++binding;
+                            }
+                        } else
+#endif
+                        {
+                            auto pos = lazyInitializationData.uniformBlockInfo.find(entry.name);
+                            if (pos != lazyInitializationData.uniformBlockInfo.end()) {
+                                binding = pos->second;
+                                mBindingMap.insert(set, entry.binding,
+                                        { binding, entry.type });
+                            }
                         }
                     }
                     break;
@@ -162,7 +171,7 @@ void OpenGLProgram::initializeProgramState(OpenGLContext& context, GLuint progra
                         GLint const loc = glGetUniformLocation(program, entry.name.c_str());
                         if (loc >= 0) {
                             // this can fail if the program doesn't use this descriptor
-                            mBindingMap.insert(entry.set, entry.binding, { tmu, entry.type });
+                            mBindingMap.insert(set, entry.binding, { tmu, entry.type });
                             glUniform1i(loc, GLint(tmu));
                             ++tmu;
                         }
@@ -172,20 +181,20 @@ void OpenGLProgram::initializeProgramState(OpenGLContext& context, GLuint progra
             }
             CHECK_GL_ERROR(utils::slog.e)
         }
-    } else
-#endif
-    {
+    }
+
+    if (context.isES2()) {
         // ES2 initialization of (fake) UBOs
         UniformsRecord* const uniformsRecords = new(std::nothrow) UniformsRecord[Program::UNIFORM_BINDING_COUNT];
         UTILS_NOUNROLL
-        for (GLuint binding = 0, n = Program::UNIFORM_BINDING_COUNT; binding < n; binding++) {
-            Program::UniformInfo& uniforms = lazyInitializationData.bindingUniformInfo[binding];
-            uniformsRecords[binding].locations.reserve(uniforms.size());
-            uniformsRecords[binding].locations.resize(uniforms.size());
+        for (GLuint index = 0, n = Program::UNIFORM_BINDING_COUNT; index < n; index++) {
+            Program::UniformInfo& uniforms = lazyInitializationData.bindingUniformInfo[index];
+            uniformsRecords[index].locations.reserve(uniforms.size());
+            uniformsRecords[index].locations.resize(uniforms.size());
             for (size_t j = 0, c = uniforms.size(); j < c; j++) {
                 GLint const loc = glGetUniformLocation(program, uniforms[j].name.c_str());
-                uniformsRecords[binding].locations[j] = loc;
-                if (UTILS_UNLIKELY(binding == 0)) {
+                uniformsRecords[index].locations[j] = loc;
+                if (UTILS_UNLIKELY(index == 0)) {
                     // This is a bit of a gross hack here, we stash the location of
                     // "frameUniforms.rec709", which obviously the backend shouldn't know about,
                     // which is used for emulating the "rec709" colorspace in the shader.
@@ -197,7 +206,7 @@ void OpenGLProgram::initializeProgramState(OpenGLContext& context, GLuint progra
                     }
                 }
             }
-            uniformsRecords[binding].uniforms = std::move(uniforms);
+            uniformsRecords[index].uniforms = std::move(uniforms);
         }
         mUniformsRecords = uniformsRecords;
     }

@@ -473,12 +473,6 @@ public:
 
     void unbindEverything() noexcept;
     void synchronizeStateAndCache(size_t index) noexcept;
-    void setEs2UniformBinding(size_t index, GLuint id, void const* data, uint16_t age) noexcept {
-        mUniformBindings[index] = { id, data, age };
-    }
-    auto getEs2UniformBinding(size_t index) const noexcept {
-        return mUniformBindings[index];
-    }
 
 #ifndef FILAMENT_SILENCE_NOT_SUPPORTED_BY_ES2
     GLuint getSamplerSlow(SamplerParams sp) const noexcept;
@@ -505,9 +499,6 @@ private:
     std::vector<std::function<void(OpenGLContext&)>> mDestroyWithNormalContext;
     RenderPrimitive mDefaultVAO;
     std::optional<GLuint> mDefaultFbo[2];
-    std::array<
-            std::tuple<GLuint, void const*, uint16_t>,
-            CONFIG_UNIFORM_BINDING_COUNT> mUniformBindings = {};
     mutable tsl::robin_map<SamplerParams, GLuint,
             SamplerParams::Hasher, SamplerParams::EqualTo> mSamplerMap;
 

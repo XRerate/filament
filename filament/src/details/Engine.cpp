@@ -38,6 +38,8 @@
 
 #include <filament/MaterialEnums.h>
 
+#include <private/filament/DescriptorSets.h>
+
 #include <private/backend/PlatformFactory.h>
 
 #include <backend/DriverEnums.h>
@@ -339,6 +341,13 @@ void FEngine::init() {
     driverApi.update3DImage(mDummyZeroTexture, 0, 0, 0, 0, 1, 1, 1,
             { zeroes, 4, Texture::Format::RGBA, Texture::Type::UBYTE });
 
+    mPerViewDescriptorSetLayout = {
+            driverApi,
+            descriptor_sets::getLayout(DescriptorSetBindingPoints::PER_VIEW) };
+    mPerRenderableDescriptorSetLayout = {
+            driverApi,
+            descriptor_sets::getLayout(DescriptorSetBindingPoints::PER_RENDERABLE) };
+
 #ifdef FILAMENT_ENABLE_FEATURE_LEVEL_0
     if (UTILS_UNLIKELY(mActiveFeatureLevel == FeatureLevel::FEATURE_LEVEL_0)) {
         FMaterial::DefaultMaterialBuilder defaultMaterialBuilder;
@@ -462,7 +471,11 @@ void FEngine::shutdown() {
     mLightManager.terminate();              // free-up all lights
     mCameraManager.terminate(*this);        // free-up all cameras
 
+    mPerViewDescriptorSetLayout.terminate(driver);
+    mPerRenderableDescriptorSetLayout.terminate(driver);
+
     driver.destroyRenderPrimitive(mFullScreenTriangleRph);
+
     destroy(mFullScreenTriangleIb);
     destroy(mFullScreenTriangleVb);
     destroy(mDummyMorphTargetBuffer);

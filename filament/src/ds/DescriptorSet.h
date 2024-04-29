@@ -17,6 +17,8 @@
 #ifndef TNT_FILAMENT_DETAILS_DESCRIPTORSET_H
 #define TNT_FILAMENT_DETAILS_DESCRIPTORSET_H
 
+#include "DescriptorSetLayout.h"
+
 #include <private/filament/EngineEnums.h>
 
 #include <backend/DriverApiForward.h>
@@ -26,8 +28,6 @@
 #include <utils/compiler.h>
 #include <utils/bitset.h>
 #include <utils/FixedCapacityVector.h>
-
-#include "DescriptorSetLayout.h"
 
 #include <stdint.h>
 
@@ -95,6 +95,7 @@ private:
     utils::FixedCapacityVector<Desc> mDescriptors;          // 16
     backend::DescriptorSetHandle mDescriptorSetHandle;      //  4
     mutable utils::bitset32 mDirty;                         //  4
+    mutable utils::bitset32 mValid;                         //  4
 };
 
 } // namespace filament

@@ -202,7 +202,7 @@ TEST_F(BackendTest, BufferObjectUpdateWithOffset) {
     // Create a program.
     ShaderGenerator shaderGen(vertex, fragment, sBackend, sIsMobilePlatform);
     Program p = shaderGen.getProgram(getDriverApi());
-    p.uniformBlockBindings({{"params", 1}});
+    p.descriptorBindings(0, {{ "params", DescriptorType::UNIFORM_BUFFER, 1 }});
     auto program = getDriverApi().createProgram(std::move(p));
 
     // Create a uniform buffer.

@@ -350,7 +350,7 @@ TEST_F(BackendTest, ColorResolve) {
     {
         ShaderGenerator shaderGen(triangleVs, triangleFs, sBackend, sIsMobilePlatform);
         Program prog = shaderGen.getProgram(api);
-        prog.uniformBlockBindings({{"params", 1}});
+        prog.descriptorBindings(0, {{ "params", DescriptorType::UNIFORM_BUFFER, 1 }});
         program = api.createProgram(std::move(prog));
     }
 

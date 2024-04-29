@@ -21,6 +21,8 @@
 
 #include "details/MaterialInstance.h"
 
+#include "ds/DescriptorSetLayout.h"
+
 #include <filament/Material.h>
 #include <filament/MaterialEnums.h>
 
@@ -89,6 +91,10 @@ public:
     // return the uniform interface block for this material
     const SamplerInterfaceBlock& getSamplerInterfaceBlock() const noexcept {
         return mSamplerInterfaceBlock;
+    }
+
+    DescriptorSetLayout const& getDescriptorSetLayout() const noexcept {
+        return mDescriptorSetLayout;
     }
 
     void compile(CompilerPriorityQueue priority,
@@ -255,10 +261,14 @@ private:
 
     void processDepthVariants(FEngine& engine, MaterialParser const* parser);
 
+    void processDescriptorSets(FEngine& engine);
+
     void createAndCacheProgram(backend::Program&& p, Variant variant) const noexcept;
 
     // try to order by frequency of use
     mutable std::array<backend::Handle<backend::HwProgram>, VARIANT_COUNT> mCachedPrograms;
+    DescriptorSetLayout mDescriptorSetLayout;
+    backend::Program::DescriptorSetInfo mProgramDescriptorBindings;
 
     backend::RasterState mRasterState;
     TransparencyMode mTransparencyMode = TransparencyMode::DEFAULT;
@@ -297,13 +307,14 @@ private:
     SamplerInterfaceBlock mSamplerInterfaceBlock;
     BufferInterfaceBlock mUniformInterfaceBlock;
     SubpassInfo mSubpassInfo;
-    utils::FixedCapacityVector<std::pair<utils::CString, uint8_t>> mUniformBlockBindings;
     utils::FixedCapacityVector<Variant> mDepthVariants; // only populated with default material
 
     using BindingUniformInfoContainer = utils::FixedCapacityVector<
             std::pair<filament::UniformBindingPoints, backend::Program::UniformInfo>>;
 
     BindingUniformInfoContainer mBindingUniformInfo;
+
+    std::unordered_map<utils::CString, uint32_t, utils::CString::Hasher> mUniformBlockInfo;
 
     using AttributeInfoContainer = utils::FixedCapacityVector<std::pair<utils::CString, uint8_t>>;
 

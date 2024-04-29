@@ -139,7 +139,11 @@ void GLDescriptorSet::update(OpenGLContext& gl,
             arg.id = t ? t->gl.id : 0;
             arg.anisotropy = float(1u << params.anisotropyLog2);
             if constexpr (std::is_same_v<T, Sampler>) {
+#ifndef FILAMENT_SILENCE_NOT_SUPPORTED_BY_ES2
                 arg.sampler = gl.getSampler(params);
+#else
+                (void)gl;
+#endif
             } else {
                 arg.params = params;
             }
@@ -179,10 +183,11 @@ void GLDescriptorSet::bind(OpenGLContext& gl, OpenGLProgram const& p, descriptor
                 if (arg.dynamicOffset) {
                     offset += offsets[dynamicOffsetIndex++];
                 }
-                gl.setEs2UniformBinding(bindingPoint,
-                        arg.bo->gl.id,
-                        static_cast<char const*>(arg.bo->gl.buffer) + offset,
-                        arg.bo->age);
+                if (arg.bo) {
+                    auto buffer = static_cast<char const*>(arg.bo->gl.buffer) + offset;
+                    const_cast<OpenGLProgram&>(p).updateUniforms(
+                            bindingPoint, arg.bo->gl.id, buffer, arg.bo->age);
+                }
             } else if constexpr (std::is_same_v<T, Sampler>) {
                 GLuint const unit = p.getTextureUnit(set, binding);
                 if (arg.target) {

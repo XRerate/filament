@@ -20,14 +20,14 @@
 
 #include "details/Engine.h"
 
-#include <private/filament/EngineEnums.h>
+#include "private/filament/EngineEnums.h"
 
-#include <backend/DriverEnums.h>
-#include <backend/Handle.h>
+#include "backend/DriverEnums.h"
+#include "backend/Handle.h"
 
-#include <utils/compiler.h>
-#include <utils/debug.h>
-#include <utils/FixedCapacityVector.h>
+#include "utils/compiler.h"
+#include "utils/debug.h"
+#include "utils/FixedCapacityVector.h"
 
 #include <utility>
 
@@ -37,7 +37,10 @@ namespace filament {
 
 DescriptorSet::DescriptorSet() noexcept = default;
 
-DescriptorSet::~DescriptorSet() noexcept = default;
+DescriptorSet::~DescriptorSet() noexcept {
+    // make sure we're not leaking the descriptor set handle
+    assert_invariant(!mDescriptorSetHandle);
+}
 
 DescriptorSet::DescriptorSet(DescriptorSetLayout const& descriptorSetLayout) noexcept
         : mDescriptors(descriptorSetLayout.getDescriptorCount()), mDirty(0xFFFFFFFF) {
@@ -45,11 +48,22 @@ DescriptorSet::DescriptorSet(DescriptorSetLayout const& descriptorSetLayout) noe
 
 DescriptorSet::DescriptorSet(DescriptorSet&& rhs) noexcept = default;
 
-DescriptorSet& DescriptorSet::operator=(DescriptorSet&& rhs) noexcept = default;
+DescriptorSet& DescriptorSet::operator=(DescriptorSet&& rhs) noexcept {
+    if (this != &rhs) {
+        // make sure we're not leaking the descriptor set handle
+        assert_invariant(!mDescriptorSetHandle);
+        mDescriptors = std::move(rhs.mDescriptors);
+        mDescriptorSetHandle = std::move(rhs.mDescriptorSetHandle);
+        mDirty = rhs.mDirty;
+        mValid = rhs.mValid;
+    }
+    return *this;
+}
 
 void DescriptorSet::terminate(FEngine::DriverApi& driver) noexcept {
     if (mDescriptorSetHandle) {
         driver.destroyDescriptorSet(mDescriptorSetHandle);
+        mDescriptorSetHandle.clear();
     }
 }
 
@@ -59,21 +73,27 @@ void DescriptorSet::commitSlow(DescriptorSetLayout const& layout,
     // if we have a dirty descriptor set,
     // we need to allocate a new one and reset all the descriptors
     if (UTILS_LIKELY(mDescriptorSetHandle)) {
+        // note: if the descriptor-set is bound, doing this will essentially make it dangling.
+        // This can result in a use-after-free in the driver if the new one isn't bound at some
+        // point later.
         driver.destroyDescriptorSet(mDescriptorSetHandle);
     }
     mDescriptorSetHandle = driver.createDescriptorSet(layout.getHandle());
-    for (auto const& entry: layout.getDescriptorSetLayout().bindings) {
+    mValid.forEachSetBit([&layout, &driver,
+            dsh = mDescriptorSetHandle, descriptors = mDescriptors.data()]
+            (backend::descriptor_binding_t const binding) {
+        auto& entry = layout.getDescriptorSetLayout().bindings[binding];
         if (entry.type == backend::DescriptorType::SAMPLER) {
-            driver.updateDescriptorSetTexture(mDescriptorSetHandle, entry.binding,
-                    mDescriptors[entry.binding].texture.th,
-                    mDescriptors[entry.binding].texture.params);
+            driver.updateDescriptorSetTexture(dsh, entry.binding,
+                    descriptors[entry.binding].texture.th,
+                    descriptors[entry.binding].texture.params);
         } else {
-            driver.updateDescriptorSetBuffer(mDescriptorSetHandle, entry.binding,
-                    mDescriptors[entry.binding].buffer.boh,
-                    mDescriptors[entry.binding].buffer.offset,
-                    mDescriptors[entry.binding].buffer.size);
+            driver.updateDescriptorSetBuffer(dsh, entry.binding,
+                    descriptors[entry.binding].buffer.boh,
+                    descriptors[entry.binding].buffer.offset,
+                    descriptors[entry.binding].buffer.size);
         }
-    }
+    });
 }
 
 void DescriptorSet::bind(FEngine::DriverApi& driver, DescriptorSetBindingPoints set) const noexcept {
@@ -95,6 +115,7 @@ void DescriptorSet::setBuffer(
     if (mDescriptors[binding].buffer.boh != boh || mDescriptors[binding].buffer.size != size) {
         // we don't set the dirty bit if only offset changes
         mDirty.set(binding);
+        mValid.set(binding);
     }
     mDescriptors[binding].buffer = { boh, offset, size };
 }
@@ -103,8 +124,11 @@ void DescriptorSet::setSampler(
         backend::descriptor_binding_t binding,
         backend::Handle<backend::HwTexture> th, backend::SamplerParams params) noexcept {
     // TODO: validate it's the right kind of descriptor
-    mDescriptors[binding].texture = { th, params };
-    mDirty.set(binding);
+    if (mDescriptors[binding].texture.th != th || mDescriptors[binding].texture.params != params) {
+        mDirty.set(binding);
+        mValid.set(binding);
+        mDescriptors[binding].texture = { th, params };
+    }
 }
 
 } // namespace filament

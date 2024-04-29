@@ -19,14 +19,16 @@
 #ifndef TNT_FILAMENT_BACKEND_DRIVERENUMS_H
 #define TNT_FILAMENT_BACKEND_DRIVERENUMS_H
 
-#include <utils/BitmaskEnum.h>
 #include <utils/unwindows.h> // Because we define ERROR in the FenceStatus enum.
 
 #include <backend/PresentCallable.h>
 
-#include <utils/Invocable.h>
-#include <utils/ostream.h>
+#include <utils/BitmaskEnum.h>
 #include <utils/FixedCapacityVector.h>
+#include <utils/Invocable.h>
+#include <utils/compiler.h>
+#include <utils/debug.h>
+#include <utils/ostream.h>
 
 #include <math/vec4.h>
 
@@ -939,6 +941,9 @@ struct SamplerParams { // NOLINT
 
     struct EqualTo {
         bool operator()(SamplerParams lhs, SamplerParams rhs) const noexcept {
+            assert_invariant(lhs.padding0 == 0);
+            assert_invariant(lhs.padding1 == 0);
+            assert_invariant(lhs.padding2 == 0);
             auto* pLhs = reinterpret_cast<uint32_t const*>(reinterpret_cast<char const*>(&lhs));
             auto* pRhs = reinterpret_cast<uint32_t const*>(reinterpret_cast<char const*>(&rhs));
             return *pLhs == *pRhs;
@@ -947,6 +952,9 @@ struct SamplerParams { // NOLINT
 
     struct LessThan {
         bool operator()(SamplerParams lhs, SamplerParams rhs) const noexcept {
+            assert_invariant(lhs.padding0 == 0);
+            assert_invariant(lhs.padding1 == 0);
+            assert_invariant(lhs.padding2 == 0);
             auto* pLhs = reinterpret_cast<uint32_t const*>(reinterpret_cast<char const*>(&lhs));
             auto* pRhs = reinterpret_cast<uint32_t const*>(reinterpret_cast<char const*>(&rhs));
             return *pLhs == *pRhs;
@@ -954,6 +962,12 @@ struct SamplerParams { // NOLINT
     };
 
 private:
+    friend inline bool operator == (SamplerParams lhs, SamplerParams rhs) noexcept {
+        return SamplerParams::EqualTo{}(lhs, rhs);
+    }
+    friend inline bool operator != (SamplerParams lhs, SamplerParams rhs) noexcept {
+        return  !SamplerParams::EqualTo{}(lhs, rhs);
+    }
     friend inline bool operator < (SamplerParams lhs, SamplerParams rhs) noexcept {
         return SamplerParams::LessThan{}(lhs, rhs);
     }

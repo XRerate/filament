@@ -314,12 +314,6 @@ bool OpenGLDriver::useProgram(OpenGLProgram* p) noexcept {
     p->use(this, mContext);
 
     if (UTILS_UNLIKELY(mContext.isES2())) {
-        for (uint32_t i = 0; i < Program::UNIFORM_BINDING_COUNT; i++) {
-            auto [id, buffer, age] = mContext.getEs2UniformBinding(i);
-            if (buffer) {
-                p->updateUniforms(i, id, buffer, age);
-            }
-        }
         // Set the output colorspace for this program (linear or rec709). This in only relevant
         // when mPlatform.isSRGBSwapChainSupported() is false (no need to check though).
         p->setRec709ColorSpace(mRec709OutputColorspace);
@@ -1728,6 +1722,12 @@ void OpenGLDriver::destroyDescriptorSetLayout(Handle<HwDescriptorSetLayout> dslh
 void OpenGLDriver::destroyDescriptorSet(Handle<HwDescriptorSet> dsh) {
     DEBUG_MARKER()
     if (dsh) {
+        // unbind the descriptor-set, to avoid use-after-free
+        for (auto& bound : mBoundDescriptorSets) {
+            if (bound.dsh == dsh) {
+                bound = {};
+            }
+        }
         GLDescriptorSet* ds = handle_cast<GLDescriptorSet*>(dsh);
         destruct(dsh, ds);
     }

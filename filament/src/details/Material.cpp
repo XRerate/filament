@@ -22,6 +22,7 @@
 
 #include "FilamentAPI-impl.h"
 
+#include <private/filament/DescriptorSets.h>
 #include <private/filament/EngineEnums.h>
 #include <private/filament/SamplerInterfaceBlock.h>
 #include <private/filament/BufferInterfaceBlock.h>
@@ -229,15 +230,22 @@ FMaterial::FMaterial(FEngine& engine, const Material::Builder& builder,
     assert_invariant(success);
 
     if (UTILS_UNLIKELY(parser->getShaderLanguage() == ShaderLanguage::ESSL1)) {
+        success = parser->getAttributeInfo(&mAttributeInfo);
+        assert_invariant(success);
+
         success = parser->getBindingUniformInfo(&mBindingUniformInfo);
         assert_invariant(success);
 
-        success = parser->getAttributeInfo(&mAttributeInfo);
-        assert_invariant(success);
-    } else if (mFeatureLevel <= FeatureLevel::FEATURE_LEVEL_1) {
-        // this chunk is not needed for materials at feature level 2 and above
-        success = parser->getUniformBlockBindings(&mUniformBlockBindings);
-        assert_invariant(success);
+        // FIXME: we need to get uniform blocks info
+        mUniformBlockInfo["FrameUniforms"] = +UniformBindingPoints::PER_VIEW;
+        mUniformBlockInfo["LightsUniforms"] = +UniformBindingPoints::LIGHTS;
+        mUniformBlockInfo["ShadowUniforms"] = +UniformBindingPoints::SHADOW;
+        mUniformBlockInfo["FroxelRecordUniforms"] = +UniformBindingPoints::FROXEL_RECORDS;
+        mUniformBlockInfo["FroxelsUniforms"] = +UniformBindingPoints::FROXELS;
+        mUniformBlockInfo["ObjectUniforms"] = +UniformBindingPoints::PER_RENDERABLE;
+        mUniformBlockInfo["BonesUniforms"] = +UniformBindingPoints::PER_RENDERABLE_BONES;
+        mUniformBlockInfo["MorphingUniforms"] = +UniformBindingPoints::PER_RENDERABLE_MORPHING;
+        mUniformBlockInfo["MaterialParams"] = +UniformBindingPoints::PER_MATERIAL_INSTANCE;
     }
 
     success = parser->getSamplerBlockBindings(
@@ -299,6 +307,7 @@ FMaterial::FMaterial(FEngine& engine, const Material::Builder& builder,
     processBlendingMode(parser);
     processSpecializationConstants(engine, builder, parser);
     processDepthVariants(engine, parser);
+    processDescriptorSets(engine);
 
     // we can only initialize the default instance once we're initialized ourselves
     new(&mDefaultInstanceStorage) FMaterialInstance(engine, this);
@@ -376,6 +385,8 @@ void FMaterial::terminate(FEngine& engine) {
     destroyPrograms(engine);
 
     getDefaultInstance()->terminate(engine);
+
+    mDescriptorSetLayout.terminate(engine.getDriverApi());
 }
 
 void FMaterial::compile(CompilerPriorityQueue priority,
@@ -545,35 +556,24 @@ Program FMaterial::getProgramWithVariants(
     program.shader(ShaderStage::VERTEX, vsBuilder.data(), vsBuilder.size())
            .shader(ShaderStage::FRAGMENT, fsBuilder.data(), fsBuilder.size())
            .shaderLanguage(mMaterialParser->getShaderLanguage())
-           .uniformBlockBindings(mUniformBlockBindings)
            .diagnostics(mName,
                     [this, variant](io::ostream& out) -> io::ostream& {
                         return out << mName.c_str_safe()
                                    << ", variant=(" << io::hex << variant.key << io::dec << ")";
                     });
 
-    UTILS_NOUNROLL
-    for (size_t i = 0; i < Enum::count<SamplerBindingPoints>(); i++) {
-        SamplerBindingPoints const bindingPoint = (SamplerBindingPoints)i;
-        auto const& info = mSamplerGroupBindingInfoList[i];
-        if (info.count) {
-            std::array<Program::Sampler, backend::MAX_SAMPLER_COUNT> samplers{};
-            for (size_t j = 0, c = info.count; j < c; ++j) {
-                uint8_t const binding = info.bindingOffset + j;
-                samplers[j] = { mSamplerBindingToNameMap[binding], binding };
-            }
-            program.setSamplerGroup(+bindingPoint, info.shaderStageFlags,
-                    samplers.data(), info.count);
-        }
-    }
     if (UTILS_UNLIKELY(mMaterialParser->getShaderLanguage() == ShaderLanguage::ESSL1)) {
         assert_invariant(!mBindingUniformInfo.empty());
         for (auto const& [index, uniforms] : mBindingUniformInfo) {
             program.uniforms(uint32_t(index), uniforms);
         }
+        program.uniformBlocks(mUniformBlockInfo);
         program.attributes(mAttributeInfo);
     }
 
+    program.descriptorBindings(0, mProgramDescriptorBindings[0]);
+    program.descriptorBindings(1, mProgramDescriptorBindings[1]);
+    program.descriptorBindings(2, mProgramDescriptorBindings[2]);
     program.specializationConstants(mSpecializationConstants);
 
     program.cacheId(utils::hash::combine(size_t(mCacheId), variant.key));
@@ -958,6 +958,47 @@ void FMaterial::processDepthVariants(FEngine& engine, MaterialParser const* cons
             }
         }
     }
+}
+
+void FMaterial::processDescriptorSets(FEngine& engine) {
+    // the PER_MATERIAL layout needs to be reflected from the Material
+
+    // TODO: this can be cached in Engine
+    for (auto id: {
+            DescriptorSetBindingPoints::PER_VIEW,
+            DescriptorSetBindingPoints::PER_RENDERABLE}) {
+        auto const& dsl = descriptor_sets::getLayout(id);
+        backend::descriptor_set_t const set = +id;
+        mProgramDescriptorBindings[set].reserve(dsl.bindings.size());
+        for (auto const& entry: dsl.bindings) {
+            utils::CString name{ descriptor_sets::getDescriptorName(id, entry.binding) };
+            mProgramDescriptorBindings[set].push_back({ std::move(name), entry.type, entry.binding });
+        }
+    }
+
+    // FIXME: this should be all retrieved by reflection from the material
+    auto const& info = mSamplerGroupBindingInfoList[+SamplerBindingPoints::PER_MATERIAL_INSTANCE];
+    auto const& dsl = descriptor_sets::getLayout(DescriptorSetBindingPoints::PER_MATERIAL);
+    backend::descriptor_set_t const set = +DescriptorSetBindingPoints::PER_MATERIAL;
+    mProgramDescriptorBindings[set].reserve(dsl.bindings.size());
+    for (auto const& entry: dsl.bindings) {
+        utils::CString name;
+        if (entry.binding == 0) {
+            name = descriptor_sets::getDescriptorName(
+                    DescriptorSetBindingPoints::PER_MATERIAL, entry.binding);
+        } else {
+            size_t const sibIndex = entry.binding - 1;
+            if (sibIndex < info.count) {
+                name = mSamplerBindingToNameMap[info.bindingOffset + sibIndex];
+            }
+        }
+        mProgramDescriptorBindings[set].push_back({ std::move(name), entry.type, entry.binding });
+    }
+
+    // in the future this could be different per material
+    mDescriptorSetLayout = {
+            engine.getDriverApi(),
+            descriptor_sets::getLayout(DescriptorSetBindingPoints::PER_MATERIAL) };
 }
 
 template bool FMaterial::setConstant<int32_t>(uint32_t id, int32_t value) noexcept;
