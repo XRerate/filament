@@ -26,6 +26,7 @@
 
 #include <array>
 #include <unordered_map>
+#include <tuple>
 #include <utility>
 #include <variant>
 
@@ -67,9 +68,9 @@ public:
     using ShaderSource = std::array<ShaderBlob, SHADER_TYPE_COUNT>;
 
     using AttributesInfo = utils::FixedCapacityVector<std::pair<utils::CString, uint8_t>>;
-    using UniformBlockInfo = std::unordered_map<utils::CString, uint32_t, utils::CString::Hasher>;
     using UniformInfo = utils::FixedCapacityVector<Uniform>;
-    using BindingUniformsInfo = std::array<Program::UniformInfo, Program::UNIFORM_BINDING_COUNT>;
+    using BindingUniformsInfo = utils::FixedCapacityVector<
+            std::tuple<uint8_t, utils::CString, Program::UniformInfo>>;
 
     Program() noexcept;
 
@@ -99,20 +100,15 @@ public:
     Program& descriptorBindings(backend::descriptor_set_t set,
             DescriptorBindingsInfo descriptorBindings) noexcept;
 
-    // ES2 support only: uniform blocks used by the program
-    Program& uniforms(uint32_t index, UniformInfo const& uniforms) noexcept;
-
-    // ES2 support only: uniform blocks info
-    Program& uniformBlocks(UniformBlockInfo uniformBlockInfo) noexcept;
-
-    // ES2 support only: attribute info
-    Program& attributes(AttributesInfo attributes) noexcept;
-
     Program& specializationConstants(SpecializationConstantsInfo specConstants) noexcept;
 
     Program& cacheId(uint64_t cacheId) noexcept;
 
     Program& multiview(bool multiview) noexcept;
+
+    // For ES2 support only...
+    Program& uniforms(uint32_t index, utils::CString name, UniformInfo uniforms) noexcept;
+    Program& attributes(AttributesInfo attributes) noexcept;
 
     //
     // Getters for program construction...
@@ -147,9 +143,6 @@ public:
     auto const& getBindingUniformInfo() const { return mBindingUniformsInfo; }
     auto& getBindingUniformInfo() { return mBindingUniformsInfo; }
 
-    auto const& getUniformBlockInfo() const { return mUniformBlockInfo; }
-    auto& getUniformBlockInfo() { return mUniformBlockInfo; }
-
     auto const& getAttributes() const { return mAttributes; }
     auto& getAttributes() { return mAttributes; }
 
@@ -168,7 +161,6 @@ private:
     // For ES2 support only
     AttributesInfo mAttributes;
     BindingUniformsInfo mBindingUniformsInfo;
-    UniformBlockInfo mUniformBlockInfo;
 
     // Indicates the current engine was initialized with multiview stereo, and the variant for this
     // program contains STE flag. This will be referred later for the OpenGL shader compiler to

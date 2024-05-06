@@ -430,6 +430,10 @@ public:
         return mPerRenderableDescriptorSetLayout;
     }
 
+    backend::Program::DescriptorSetInfo const& getCommonProgramDescriptorBindings() const noexcept {
+        return mProgramDescriptorBindings;
+    }
+
     backend::Handle<backend::HwTexture> getOneTexture() const { return mDummyOneTexture; }
     backend::Handle<backend::HwTexture> getZeroTexture() const { return mDummyZeroTexture; }
     backend::Handle<backend::HwTexture> getOneTextureArray() const { return mDummyOneTextureArray; }
@@ -501,6 +505,7 @@ private:
     HwVertexBufferInfoFactory mHwVertexBufferInfoFactory;
     DescriptorSetLayout mPerViewDescriptorSetLayout;
     DescriptorSetLayout mPerRenderableDescriptorSetLayout;
+    backend::Program::DescriptorSetInfo mProgramDescriptorBindings;
 
     ResourceList<FBufferObject> mBufferObjects{ "BufferObject" };
     ResourceList<FRenderer> mRenderers{ "Renderer" };

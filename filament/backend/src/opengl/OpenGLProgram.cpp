@@ -46,7 +46,6 @@ using namespace backend;
 
 struct OpenGLProgram::LazyInitializationData {
     Program::DescriptorSetInfo descriptorBindings;
-    Program::UniformBlockInfo uniformBlockInfo;
     Program::BindingUniformsInfo bindingUniformInfo;
 };
 
@@ -59,7 +58,6 @@ OpenGLProgram::OpenGLProgram(OpenGLDriver& gld, Program&& program) noexcept
     auto* const lazyInitializationData = new(std::nothrow) LazyInitializationData();
     if (UTILS_UNLIKELY(gld.getContext().isES2())) {
         lazyInitializationData->bindingUniformInfo = std::move(program.getBindingUniformInfo());
-        lazyInitializationData->uniformBlockInfo = std::move(program.getUniformBlockInfo());
     }
     lazyInitializationData->descriptorBindings = std::move(program.getDescriptorBindings());
 
@@ -156,11 +154,14 @@ void OpenGLProgram::initializeProgramState(OpenGLContext& context, GLuint progra
                         } else
 #endif
                         {
-                            auto pos = lazyInitializationData.uniformBlockInfo.find(entry.name);
-                            if (pos != lazyInitializationData.uniformBlockInfo.end()) {
-                                binding = pos->second;
-                                mBindingMap.insert(set, entry.binding,
-                                        { binding, entry.type });
+                            auto pos = std::find_if(lazyInitializationData.bindingUniformInfo.begin(),
+                                    lazyInitializationData.bindingUniformInfo.end(),
+                                    [&name = entry.name](const auto& item) {
+                                return std::get<1>(item) == name;
+                            });
+                            if (pos != lazyInitializationData.bindingUniformInfo.end()) {
+                                binding = std::get<0>(*pos);
+                                mBindingMap.insert(set, entry.binding, { binding, entry.type });
                             }
                         }
                     }
@@ -187,8 +188,7 @@ void OpenGLProgram::initializeProgramState(OpenGLContext& context, GLuint progra
         // ES2 initialization of (fake) UBOs
         UniformsRecord* const uniformsRecords = new(std::nothrow) UniformsRecord[Program::UNIFORM_BINDING_COUNT];
         UTILS_NOUNROLL
-        for (GLuint index = 0, n = Program::UNIFORM_BINDING_COUNT; index < n; index++) {
-            Program::UniformInfo& uniforms = lazyInitializationData.bindingUniformInfo[index];
+        for (auto&& [index, name, uniforms] : lazyInitializationData.bindingUniformInfo) {
             uniformsRecords[index].locations.reserve(uniforms.size());
             uniformsRecords[index].locations.resize(uniforms.size());
             for (size_t j = 0, c = uniforms.size(); j < c; j++) {

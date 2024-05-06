@@ -69,14 +69,9 @@ Program& Program::descriptorBindings(backend::descriptor_set_t set,
     return *this;
 }
 
-Program& Program::uniforms(uint32_t index, UniformInfo const& uniforms) noexcept {
-    assert_invariant(index < UNIFORM_BINDING_COUNT);
-    mBindingUniformsInfo[index] = uniforms;
-    return *this;
-}
-
-Program& Program::uniformBlocks(UniformBlockInfo uniformBlockInfo) noexcept {
-    mUniformBlockInfo = std::move(uniformBlockInfo);
+Program& Program::uniforms(uint32_t index, utils::CString name, UniformInfo uniforms) noexcept {
+    mBindingUniformsInfo.reserve(mBindingUniformsInfo.capacity() + 1);
+    mBindingUniformsInfo.emplace_back(index, std::move(name), std::move(uniforms));
     return *this;
 }
 

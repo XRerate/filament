@@ -28,7 +28,6 @@
 
 #include <private/filament/EngineEnums.h>
 #include <private/filament/BufferInterfaceBlock.h>
-#include <private/filament/SamplerBindingsInfo.h>
 #include <private/filament/SamplerInterfaceBlock.h>
 #include <private/filament/SubpassInfo.h>
 #include <private/filament/Variant.h>
@@ -47,12 +46,13 @@
 #include <utils/Mutex.h>
 
 #include <array>
-#include <atomic>
 #include <memory>
 #include <mutex>
 #include <new>
 #include <optional>
 #include <string_view>
+#include <tuple>
+#include <type_traits>
 #include <unordered_map>
 #include <utility>
 
@@ -261,7 +261,7 @@ private:
 
     void processDepthVariants(FEngine& engine, MaterialParser const* parser);
 
-    void processDescriptorSets(FEngine& engine);
+    void processDescriptorSets(FEngine& engine, MaterialParser const* parser);
 
     void createAndCacheProgram(backend::Program&& p, Variant variant) const noexcept;
 
@@ -302,26 +302,22 @@ private:
 
     // reserve some space to construct the default material instance
     std::aligned_storage<sizeof(FMaterialInstance), alignof(FMaterialInstance)>::type mDefaultInstanceStorage;
-    static_assert(sizeof(mDefaultInstanceStorage) >= sizeof(mDefaultInstanceStorage));
+    static_assert(sizeof(mDefaultInstanceStorage) >= sizeof(FMaterialInstance));
 
     SamplerInterfaceBlock mSamplerInterfaceBlock;
     BufferInterfaceBlock mUniformInterfaceBlock;
     SubpassInfo mSubpassInfo;
     utils::FixedCapacityVector<Variant> mDepthVariants; // only populated with default material
 
-    using BindingUniformInfoContainer = utils::FixedCapacityVector<
-            std::pair<filament::UniformBindingPoints, backend::Program::UniformInfo>>;
+    using BindingUniformInfoContainer = utils::FixedCapacityVector<std::tuple<
+            uint8_t, utils::CString, backend::Program::UniformInfo>>;
 
     BindingUniformInfoContainer mBindingUniformInfo;
-
-    std::unordered_map<utils::CString, uint32_t, utils::CString::Hasher> mUniformBlockInfo;
 
     using AttributeInfoContainer = utils::FixedCapacityVector<std::pair<utils::CString, uint8_t>>;
 
     AttributeInfoContainer mAttributeInfo;
 
-    SamplerGroupBindingInfoList mSamplerGroupBindingInfoList;
-    SamplerBindingToNameMap mSamplerBindingToNameMap;
     // Constants defined by this Material
     utils::FixedCapacityVector<MaterialConstant> mMaterialConstants;
     // A map from the Constant name to the mMaterialConstant index

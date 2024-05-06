@@ -348,6 +348,21 @@ void FEngine::init() {
             driverApi,
             descriptor_sets::getLayout(DescriptorSetBindingPoints::PER_RENDERABLE) };
 
+    // The per-program descriptors info is currently the same for all materials, se we
+    // cache it in the Engine.
+    for (auto id: {
+            DescriptorSetBindingPoints::PER_VIEW,
+            DescriptorSetBindingPoints::PER_RENDERABLE }) {
+        auto const& dsl = descriptor_sets::getLayout(id);
+        backend::descriptor_set_t const set = +id;
+        mProgramDescriptorBindings[set].reserve(dsl.bindings.size());
+        for (auto const& entry: dsl.bindings) {
+            mProgramDescriptorBindings[set].push_back(
+                    {{ descriptor_sets::getDescriptorName(id, entry.binding) },
+                     entry.type, entry.binding });
+        }
+    }
+
 #ifdef FILAMENT_ENABLE_FEATURE_LEVEL_0
     if (UTILS_UNLIKELY(mActiveFeatureLevel == FeatureLevel::FEATURE_LEVEL_0)) {
         FMaterial::DefaultMaterialBuilder defaultMaterialBuilder;
