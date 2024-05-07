@@ -29,6 +29,7 @@ namespace filament {
 static constexpr size_t POST_PROCESS_VARIANT_BITS = 1;
 static constexpr size_t POST_PROCESS_VARIANT_COUNT = (1u << POST_PROCESS_VARIANT_BITS);
 static constexpr size_t POST_PROCESS_VARIANT_MASK = POST_PROCESS_VARIANT_COUNT - 1;
+
 enum class PostProcessVariant : uint8_t {
     OPAQUE,
     TRANSLUCENT
@@ -65,19 +66,8 @@ enum class PerRenderableBindingPoints : uint8_t  {
     BONES_INDICES_AND_WEIGHTS   =  5,
 };
 
-// Binding points for uniform buffers
-enum class UniformBindingPoints : uint8_t {
-    PER_VIEW                   = 0,    // uniforms updated per view
-    PER_RENDERABLE             = 1,    // uniforms updated per renderable
-    PER_RENDERABLE_BONES       = 2,    // bones data, per renderable
-    PER_RENDERABLE_MORPHING    = 3,    // morphing uniform/sampler updated per render primitive
-    LIGHTS                     = 4,    // lights data array
-    SHADOW                     = 5,    // punctual shadow data
-    FROXEL_RECORDS             = 6,
-    FROXELS                    = 7,
-    PER_MATERIAL_INSTANCE      = 8,    // uniforms updates per material
-    // Update utils::Enum::count<>() below when adding values here
-    // These are limited by CONFIG_BINDING_COUNT (currently 10)
+enum class PerMaterialBindingPoints : uint8_t  {
+    MATERIAL_PARAMS             =  0,   // uniforms
 };
 
 // Binding points for sampler buffers.
@@ -168,9 +158,9 @@ template<>
 struct utils::EnableIntegerOperators<filament::PerViewBindingPoints> : public std::true_type {};
 template<>
 struct utils::EnableIntegerOperators<filament::PerRenderableBindingPoints> : public std::true_type {};
-
 template<>
-struct utils::EnableIntegerOperators<filament::UniformBindingPoints> : public std::true_type {};
+struct utils::EnableIntegerOperators<filament::PerMaterialBindingPoints> : public std::true_type {};
+
 template<>
 struct utils::EnableIntegerOperators<filament::SamplerBindingPoints> : public std::true_type {};
 template<>
@@ -179,13 +169,10 @@ template<>
 struct utils::EnableIntegerOperators<filament::PostProcessVariant> : public std::true_type {};
 
 template<>
-inline constexpr size_t utils::Enum::count<filament::UniformBindingPoints>() { return 9; }
-template<>
 inline constexpr size_t utils::Enum::count<filament::SamplerBindingPoints>() { return 4; }
 template<>
 inline constexpr size_t utils::Enum::count<filament::PostProcessVariant>() { return filament::POST_PROCESS_VARIANT_COUNT; }
 
-static_assert(utils::Enum::count<filament::UniformBindingPoints>() <= filament::backend::CONFIG_UNIFORM_BINDING_COUNT);
 static_assert(utils::Enum::count<filament::SamplerBindingPoints>() <= filament::backend::CONFIG_SAMPLER_BINDING_COUNT);
 
 #endif // TNT_FILAMENT_ENGINE_ENUM_H
